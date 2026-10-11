@@ -2,6 +2,7 @@
 
 use App\Enums\EventStatus;
 use App\Models\Event;
+use App\Models\TicketType;
 use App\Models\User;
 use Livewire\Livewire;
 
@@ -30,6 +31,8 @@ test('the owner can update the event', function () {
 });
 
 test('the owner can toggle between draft and published', function () {
+    TicketType::factory()->for($this->event)->create();
+
     $component = Livewire::actingAs($this->owner)
         ->test('pages::organizer.events.edit', ['event' => $this->event])
         ->assertSee('公開する');
