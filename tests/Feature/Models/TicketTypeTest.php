@@ -1,6 +1,8 @@
 <?php
 
 use App\Models\Event;
+use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\TicketType;
 
 test('isOnSale is true only within the sales period, boundaries included', function (string $now, bool $expected) {
@@ -53,4 +55,26 @@ test('deleting an event deletes its ticket types', function () {
     $event->delete();
 
     expect(TicketType::pluck('id')->all())->toBe([$other->id]);
+});
+
+test('remaining subtracts paid orders and pending orders created within 15 minutes', function () {
+    $this->travelTo('2030-01-15 12:00:00');
+    $ticketType = TicketType::factory()->create(['capacity' => 50]);
+    $hold = fn (Order $order, int $quantity) => OrderItem::factory()->for($order)->for($ticketType)->create(['quantity' => $quantity]);
+
+    $hold(Order::factory()->paid()->create(['created_at' => '2030-01-01 00:00:00']), 30);
+    $hold(Order::factory()->create(['created_at' => '2030-01-15 11:45:00']), 5);
+    $hold(Order::factory()->create(['created_at' => '2030-01-15 11:44:59']), 4);
+    $hold(Order::factory()->cancelled()->create(), 3);
+    $hold(Order::factory()->refunded()->create(), 2);
+    OrderItem::factory()->for(Order::factory()->paid())->create(['quantity' => 1]);
+
+    expect($ticketType->remaining())->toBe(15);
+});
+
+test('remaining never goes below zero', function () {
+    $ticketType = TicketType::factory()->create(['capacity' => 2]);
+    OrderItem::factory()->for(Order::factory()->paid())->for($ticketType)->create(['quantity' => 3]);
+
+    expect($ticketType->remaining())->toBe(0);
 });

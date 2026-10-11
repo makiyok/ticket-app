@@ -4,6 +4,13 @@ use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'welcome')->name('home');
 
+Route::livewire('events/{event}', 'pages::events.show')->name('events.show');
+
+Route::middleware('auth')->group(function () {
+    Route::livewire('events/{event}/purchase', 'pages::events.purchase')->name('events.purchase');
+    Route::livewire('orders/{order}/complete', 'pages::orders.complete')->name('orders.complete');
+});
+
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', function () {
         $user = auth()->user();

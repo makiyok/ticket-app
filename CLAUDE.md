@@ -39,8 +39,8 @@
 - ロールは `users.role`（`customer` / `organizer` / `admin`）。状態やロールは string カラムを PHP の Enum にキャストする
 - 主催者は `events.organizer_id`、注文者は `orders.user_id`。どちらも `users.id` を指すので取り違えない
 - 金額は円の整数。注文時の単価を `order_items.unit_price` に保存し、合計は券種の現在の価格から計算し直さない
-- 残り枚数はカラムに持たない。`capacity −（paid の枚数）−（作成から30分以内の pending の枚数）` で計算する
-- 注文を作る前に、販売期間内であることと、枚数が残り枚数以下であることを確認する
+- 残り枚数はカラムに持たない。`capacity −（paid の枚数）−（作成から15分以内の pending の枚数）` で計算する
+- 注文を作る前に、販売期間内であること、枚数が残り枚数以下であること、枚数が 1〜10 であることを確認する（`OrderService::createOrder()`）
 - 外部キーは、お金に関わる記録（注文、売れた券種）が restrict、親と一体のもの（券種、明細、チケット）が cascade
 - 注文があるイベントや券種は削除できない。DB エラーになる前に画面側で断る
 - 画像は `public` ディスクの `events/` に保存する

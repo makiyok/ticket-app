@@ -2,8 +2,11 @@
 
 namespace App\Models;
 
+use App\Enums\OrderStatus;
+use App\Services\OrderService;
 use Database\Factories\TicketTypeFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -64,5 +67,23 @@ class TicketType extends Model
     public function isOnSale(): bool
     {
         return now()->between($this->sales_starts_at, $this->sales_ends_at);
+    }
+
+    /**
+     * 残り枚数。定員から、支払い済みの枚数と、有効な支払い待ちの枚数を引く。
+     */
+    public function remaining(): int
+    {
+        $held = $this->orderItems()
+            ->whereHas('order', function (Builder $query): void {
+                $query->where('status', OrderStatus::Paid)
+                    ->orWhere(function (Builder $query): void {
+                        $query->where('status', OrderStatus::Pending)
+                            ->where('created_at', '>=', now()->subMinutes(OrderService::PENDING_MINUTES));
+                    });
+            })
+            ->sum('quantity');
+
+        return max(0, $this->capacity - (int) $held);
     }
 }
