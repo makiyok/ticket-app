@@ -14,6 +14,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
             default => '/orders',
         });
     })->name('dashboard');
+
+    Route::middleware('role:organizer')->prefix('organizer/events')->name('organizer.events.')->group(function () {
+        Route::livewire('/', 'pages::organizer.events.index')->name('index');
+        Route::livewire('create', 'pages::organizer.events.create')->name('create');
+        Route::livewire('{event}/edit', 'pages::organizer.events.edit')->name('edit');
+    });
 });
 
 require __DIR__.'/settings.php';
