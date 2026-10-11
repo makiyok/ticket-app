@@ -21,4 +21,17 @@ enum OrderStatus: string
             self::Refunded => '返金済み',
         };
     }
+
+    /**
+     * flux:badge に渡す色
+     */
+    public function color(): string
+    {
+        return match ($this) {
+            self::Pending => 'yellow',
+            self::Paid => 'green',
+            self::Cancelled => 'zinc',
+            self::Refunded => 'zinc',
+        };
+    }
 }
