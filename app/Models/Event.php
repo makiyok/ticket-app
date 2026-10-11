@@ -61,6 +61,14 @@ class Event extends Model
     }
 
     /**
+     * @return HasMany<Order, $this>
+     */
+    public function orders(): HasMany
+    {
+        return $this->hasMany(Order::class);
+    }
+
+    /**
      * @param  Builder<Event>  $query
      */
     public function scopePublished(Builder $query): void

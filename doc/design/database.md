@@ -103,7 +103,7 @@ erDiagram
 |-|-|-|-|
 | user_id | bigint | not null, FK → users.id | 注文者 |
 | event_id | bigint | not null, FK → events.id | 対象イベント。1注文は1イベントに限る |
-| status | string | not null, default `pending`, index | `pending`（支払い待ち） / `paid`（支払い済み） |
+| status | string | not null, default `pending`, index | `pending`（支払い待ち） / `paid`（支払い済み） / `cancelled`（キャンセル） / `refunded`（返金済み）。PHP の Enum（`OrderStatus`）にキャストする |
 | total_amount | unsigned int | not null | 合計金額（円）。明細の `unit_price × quantity` の合計 |
 | stripe_checkout_session_id | string | nullable, unique | Checkout Session の ID。Stripe へ進むまでは null |
 | paid_at | datetime | nullable | 支払いが確定した日時 |
@@ -157,6 +157,7 @@ erDiagram
 | 支払い済みの枚数 | その券種の `order_items.quantity` のうち、注文が `paid` のものの合計 |
 | 有効な支払い待ちの枚数 | その券種の `order_items.quantity` のうち、注文が `pending` かつ `orders.created_at` が30分以内のものの合計 |
 
+- `cancelled` と `refunded` の注文は数えない（枠が戻る）
 - 計算結果が 0 未満になる場合は 0 として表示する
 - 30分を過ぎた支払い待ちの注文は数えない。放置された注文が枠を占有し続けないようにするため
 - 30分は Stripe Checkout Session の有効期限の最短値に合わせる。Session を作るときに `expires_at` を30分後にし、期限切れの注文があとから支払われないようにする（平日課題）
