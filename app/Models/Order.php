@@ -18,6 +18,7 @@ use Illuminate\Support\Carbon;
  * @property OrderStatus $status
  * @property int $total_amount
  * @property string|null $stripe_checkout_session_id
+ * @property string|null $payment_intent_id
  * @property Carbon|null $paid_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -85,5 +86,21 @@ class Order extends Model
     public function isPaid(): bool
     {
         return $this->status === OrderStatus::Paid;
+    }
+
+    /**
+     * 支払い待ちのときだけキャンセルにする。支払い済みの注文は壊さない。
+     * キャンセルにすると残り枚数の計算から外れ、押さえていた枠が戻る。
+     */
+    public function cancelIfPending(): bool
+    {
+        $updated = static::query()
+            ->whereKey($this->id)
+            ->where('status', OrderStatus::Pending)
+            ->update(['status' => OrderStatus::Cancelled]);
+
+        $this->refresh();
+
+        return $updated === 1;
     }
 }

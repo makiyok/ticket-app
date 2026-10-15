@@ -2,12 +2,14 @@
 
 namespace App\Services;
 
+use App\Enums\OrderStatus;
 use App\Exceptions\PurchaseException;
 use App\Models\Event;
 use App\Models\Order;
 use App\Models\TicketType;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class OrderService
 {
@@ -74,6 +76,42 @@ class OrderService
             $order->items()->createMany($items);
 
             return $order;
+        });
+    }
+
+    /**
+     * 支払い待ちの注文を支払い済みにし、明細の枚数分のチケットを発行する。
+     *
+     * Webhook と完了ページが同時に来ても二重にならないよう、status が pending の行だけを更新する。
+     * 更新できたほう（1件だけ）がチケットを発行する。
+     *
+     * @return bool 今回の呼び出しで支払い済みにしたら true、すでに処理済みなら false
+     */
+    public function markAsPaid(Order $order, ?string $paymentIntentId = null): bool
+    {
+        return DB::transaction(function () use ($order, $paymentIntentId): bool {
+            $updated = Order::query()
+                ->whereKey($order->id)
+                ->where('status', OrderStatus::Pending)
+                ->update([
+                    'status' => OrderStatus::Paid,
+                    'paid_at' => now(),
+                    'payment_intent_id' => $paymentIntentId,
+                ]);
+
+            if ($updated === 0) {
+                return false;
+            }
+
+            foreach ($order->items()->get() as $item) {
+                for ($i = 0; $i < $item->quantity; $i++) {
+                    $item->tickets()->create(['code' => (string) Str::uuid()]);
+                }
+            }
+
+            $order->refresh();
+
+            return true;
         });
     }
 

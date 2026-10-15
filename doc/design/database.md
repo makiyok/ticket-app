@@ -48,6 +48,7 @@ erDiagram
         string status
         int total_amount
         string stripe_checkout_session_id UK
+        string payment_intent_id UK
         datetime paid_at
     }
     order_items {
@@ -106,6 +107,7 @@ erDiagram
 | status | string | not null, default `pending`, index | `pending`（支払い待ち） / `paid`（支払い済み） / `cancelled`（キャンセル） / `refunded`（返金済み）。PHP の Enum（`OrderStatus`）にキャストする |
 | total_amount | unsigned int | not null | 合計金額（円）。明細の `unit_price × quantity` の合計 |
 | stripe_checkout_session_id | string | nullable, unique | Checkout Session の ID。Stripe へ進むまでは null |
+| payment_intent_id | string | nullable, unique | 支払い済みにしたときの PaymentIntent の ID。返金（E3）で注文を特定するために保存する。無料の注文は null |
 | paid_at | datetime | nullable | 支払いが確定した日時 |
 
 ### order_items
@@ -124,7 +126,7 @@ erDiagram
 | カラム | 型 | 制約 | 説明 |
 |-|-|-|-|
 | order_item_id | bigint | not null, FK → order_items.id | どの明細から発行されたか。注文と券種はここから辿る |
-| code | string | not null, unique | 1枚ごとの固有コード（ULID などのランダムな文字列） |
+| code | string | not null, unique | 1枚ごとの固有コード（UUID） |
 
 支払い済みになったとき、明細の `quantity` の枚数分を発行する。
 

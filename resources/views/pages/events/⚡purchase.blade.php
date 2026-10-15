@@ -3,12 +3,14 @@
 use App\Exceptions\PurchaseException;
 use App\Models\Event;
 use App\Models\TicketType;
+use App\Services\CheckoutService;
 use App\Services\OrderService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
+use Stripe\Exception\ApiErrorException;
 
 new #[Title('購入内容の確認')] class extends Component {
     public Event $event;
@@ -47,9 +49,9 @@ new #[Title('購入内容の確認')] class extends Component {
     }
 
     /**
-     * 注文を作る。Stripe はまだ無いので、できたら仮の完了画面へ進む。
+     * 注文を作り、Stripe の決済ページへ進む。合計 0 円の注文は Stripe を通さず、その場で支払い済みにして完了画面へ進む。
      */
-    public function checkout(OrderService $orderService): void
+    public function checkout(OrderService $orderService, CheckoutService $checkoutService): void
     {
         $this->authorize('view', $this->event);
 
@@ -63,9 +65,31 @@ new #[Title('購入内容の確認')] class extends Component {
             return;
         }
 
+        if ($order->total_amount === 0) {
+            $orderService->markAsPaid($order);
+
+            session()->forget("purchase.{$this->event->id}");
+
+            $this->redirectRoute('orders.complete', $order);
+
+            return;
+        }
+
+        try {
+            $url = $checkoutService->createSession($order);
+        } catch (ApiErrorException $e) {
+            report($e);
+
+            $order->cancelIfPending();
+
+            $this->addError('purchase', '決済ページを開けませんでした。時間をおいてもう一度お試しください。');
+
+            return;
+        }
+
         session()->forget("purchase.{$this->event->id}");
 
-        $this->redirectRoute('orders.complete', $order);
+        $this->redirect($url);
     }
 
     /**

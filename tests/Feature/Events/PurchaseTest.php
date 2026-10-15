@@ -4,9 +4,12 @@ use App\Enums\OrderStatus;
 use App\Models\Event;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\Ticket;
 use App\Models\TicketType;
 use App\Models\User;
+use App\Services\CheckoutService;
 use Livewire\Livewire;
+use Stripe\Exception\ApiConnectionException;
 
 test('proceeding stores the selected quantities in the session and goes to the purchase page', function () {
     $event = Event::factory()->published()->create();
@@ -65,22 +68,63 @@ test('the purchase page goes back to the event when nothing is selected', functi
         ->assertRedirect(route('events.show', $event));
 });
 
-test('checkout creates a pending order and goes to the complete page', function () {
+test('checkout creates a pending order and redirects to the Stripe page', function () {
     $buyer = User::factory()->create();
     $event = Event::factory()->published()->create();
     $ticketType = TicketType::factory()->for($event)->create(['price' => 3000, 'capacity' => 50]);
     session()->put("purchase.{$event->id}", [$ticketType->id => 2]);
+    $this->mock(CheckoutService::class)
+        ->shouldReceive('createSession')
+        ->once()
+        ->with(Mockery::on(fn (Order $order): bool => $order->total_amount === 6000))
+        ->andReturn('https://checkout.stripe.com/c/pay/cs_test_123');
 
-    $component = Livewire::actingAs($buyer)
+    Livewire::actingAs($buyer)
+        ->test('pages::events.purchase', ['event' => $event])
+        ->call('checkout')
+        ->assertRedirect('https://checkout.stripe.com/c/pay/cs_test_123');
+
+    $order = Order::sole();
+    expect($order->user_id)->toBe($buyer->id)
+        ->and($order->status)->toBe(OrderStatus::Pending)
+        ->and($order->total_amount)->toBe(6000)
+        ->and(session()->has("purchase.{$event->id}"))->toBeFalse();
+});
+
+test('a free order skips Stripe, is paid on the spot and goes to the complete page', function () {
+    $event = Event::factory()->published()->create();
+    $ticketType = TicketType::factory()->for($event)->create(['price' => 0, 'capacity' => 50]);
+    session()->put("purchase.{$event->id}", [$ticketType->id => 2]);
+    $this->mock(CheckoutService::class)->shouldNotReceive('createSession');
+
+    $component = Livewire::actingAs(User::factory()->create())
         ->test('pages::events.purchase', ['event' => $event])
         ->call('checkout');
 
     $order = Order::sole();
     $component->assertRedirect(route('orders.complete', $order));
-    expect($order->user_id)->toBe($buyer->id)
-        ->and($order->status)->toBe(OrderStatus::Pending)
-        ->and($order->total_amount)->toBe(6000)
-        ->and(session()->has("purchase.{$event->id}"))->toBeFalse();
+    expect($order->total_amount)->toBe(0)
+        ->and($order->status)->toBe(OrderStatus::Paid)
+        ->and($order->paid_at)->not->toBeNull()
+        ->and(Ticket::count())->toBe(2);
+});
+
+test('a Stripe failure cancels the order and shows an error', function () {
+    $event = Event::factory()->published()->create();
+    $ticketType = TicketType::factory()->for($event)->create(['price' => 3000, 'capacity' => 50]);
+    session()->put("purchase.{$event->id}", [$ticketType->id => 1]);
+    $this->mock(CheckoutService::class)
+        ->shouldReceive('createSession')
+        ->andThrow(new ApiConnectionException('network down'));
+
+    Livewire::actingAs(User::factory()->create())
+        ->test('pages::events.purchase', ['event' => $event])
+        ->call('checkout')
+        ->assertNoRedirect()
+        ->assertSee('決済ページを開けませんでした');
+
+    expect(Order::sole()->status)->toBe(OrderStatus::Cancelled)
+        ->and($ticketType->remaining())->toBe(50);
 });
 
 test('checkout shows the purchase error and creates no order', function () {
