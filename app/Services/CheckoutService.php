@@ -34,8 +34,6 @@ class CheckoutService
 
         $session = $this->stripe->checkout->sessions->create([
             'mode' => 'payment',
-            // コンビニ決済のような後払い型は、入金通知（async_payment_succeeded）を扱わないので使わない
-            'payment_method_types' => ['card'],
             'line_items' => $lineItems,
             'customer_email' => $order->user->email,
             'metadata' => ['order_id' => (string) $order->id],

@@ -20,7 +20,7 @@ test('createSession builds a jpy payment session and saves the session id', func
         ->once()
         ->withArgs(function (array $params) use ($order): bool {
             return $params['mode'] === 'payment'
-                && $params['payment_method_types'] === ['card']
+                && ! array_key_exists('payment_method_types', $params)
                 && 30 * 60 <= $params['expires_at'] - time()
                 && $params['line_items'] === [[
                     'quantity' => 2,
