@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Event;
 use App\Models\User;
 use Livewire\Livewire;
 
@@ -72,4 +73,21 @@ test('correct password must be provided to delete account', function () {
     $response->assertHasErrors(['password']);
 
     expect($user->fresh())->not->toBeNull();
+});
+
+test('an organizer with events cannot delete their account', function () {
+    $organizer = User::factory()->organizer()->create();
+    Event::factory()->for($organizer, 'organizer')->create();
+
+    $this->actingAs($organizer);
+
+    Livewire::test('pages::settings.delete-user-modal')
+        ->set('password', 'password')
+        ->call('deleteUser')
+        ->assertHasErrors(['password'])
+        ->assertSee('イベントが残っているため退会できません。')
+        ->assertNoRedirect();
+
+    expect($organizer->fresh())->not->toBeNull();
+    expect(auth()->check())->toBeTrue();
 });

@@ -19,6 +19,12 @@ new class extends Component {
             'password' => $this->currentPasswordRules(),
         ]);
 
+        if (Auth::user()->events()->exists()) {
+            $this->addError('password', 'イベントが残っているため退会できません。先にイベントを削除してください。');
+
+            return;
+        }
+
         tap(Auth::user(), $logout(...))->delete();
 
         $this->redirect('/', navigate: true);

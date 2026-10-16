@@ -29,6 +29,7 @@ erDiagram
         text description
         string venue
         datetime starts_at
+        datetime ends_at
         string status
     }
     ticket_types {
@@ -47,6 +48,7 @@ erDiagram
         string status
         int total_amount
         string stripe_checkout_session_id UK
+        string payment_intent_id UK
         datetime paid_at
     }
     order_items {
@@ -82,7 +84,8 @@ erDiagram
 | description | text | not null | 説明 |
 | venue | string | not null | 会場 |
 | starts_at | datetime | not null, index | 開催日時。一覧の並び順と「開催済みを除く」に使う |
-| status | string | not null, default `draft` | `draft` / `published` |
+| ends_at | datetime | not null | 終了日時。`starts_at` より後 |
+| status | string | not null, default `draft` | `draft`（下書き） / `published`（公開中） / `unpublished`（管理者が非公開にした状態。主催者は戻せない） |
 
 ### ticket_types
 
@@ -101,9 +104,10 @@ erDiagram
 |-|-|-|-|
 | user_id | bigint | not null, FK → users.id | 注文者 |
 | event_id | bigint | not null, FK → events.id | 対象イベント。1注文は1イベントに限る |
-| status | string | not null, default `pending`, index | `pending`（支払い待ち） / `paid`（支払い済み） |
+| status | string | not null, default `pending`, index | `pending`（支払い待ち） / `paid`（支払い済み） / `cancelled`（キャンセル） / `refunded`（返金済み）。PHP の Enum（`OrderStatus`）にキャストする |
 | total_amount | unsigned int | not null | 合計金額（円）。明細の `unit_price × quantity` の合計 |
 | stripe_checkout_session_id | string | nullable, unique | Checkout Session の ID。Stripe へ進むまでは null |
+| payment_intent_id | string | nullable, unique | 支払い済みにしたときの PaymentIntent の ID。返金（E3）で注文を特定するために保存する。無料の注文は null |
 | paid_at | datetime | nullable | 支払いが確定した日時 |
 
 ### order_items
@@ -122,7 +126,7 @@ erDiagram
 | カラム | 型 | 制約 | 説明 |
 |-|-|-|-|
 | order_item_id | bigint | not null, FK → order_items.id | どの明細から発行されたか。注文と券種はここから辿る |
-| code | string | not null, unique | 1枚ごとの固有コード（ULID などのランダムな文字列） |
+| code | string | not null, unique | 1枚ごとの固有コード（UUID） |
 
 支払い済みになったとき、明細の `quantity` の枚数分を発行する。
 
@@ -153,11 +157,11 @@ erDiagram
 | 項目 | 数え方 |
 |-|-|
 | 支払い済みの枚数 | その券種の `order_items.quantity` のうち、注文が `paid` のものの合計 |
-| 有効な支払い待ちの枚数 | その券種の `order_items.quantity` のうち、注文が `pending` かつ `orders.created_at` が30分以内のものの合計 |
+| 有効な支払い待ちの枚数 | その券種の `order_items.quantity` のうち、注文が `pending` かつ `orders.created_at` が15分以内のものの合計 |
 
+- `cancelled` と `refunded` の注文は数えない（枠が戻る）
 - 計算結果が 0 未満になる場合は 0 として表示する
-- 30分を過ぎた支払い待ちの注文は数えない。放置された注文が枠を占有し続けないようにするため
-- 30分は Stripe Checkout Session の有効期限の最短値に合わせる。Session を作るときに `expires_at` を30分後にし、期限切れの注文があとから支払われないようにする（平日課題）
+- 15分を過ぎた支払い待ちの注文は数えない。放置された注文が枠を占有し続けないようにするため。時間は `OrderService::PENDING_MINUTES` で持つ
 
 ### 計算例
 
@@ -173,15 +177,19 @@ erDiagram
 
 ### 購入時のチェック（C9）
 
-注文を作る前に、券種ごとに次の2つを確認する。満たさないときは注文を作らずエラーを表示する。
+注文を作る前に、`OrderService::createOrder()` が券種ごとに次の3つを確認する。満たさないときは注文を作らず `PurchaseException` を投げ、画面はそのメッセージを表示する。
 
 - 現在時刻が `sales_starts_at` 以上、`sales_ends_at` 以下である
 - 注文する枚数が残り枚数以下である
+- 注文する枚数が 1 以上 `OrderService::MAX_QUANTITY`（10）以下である
+
+このほか、イベントが公開中でないとき、券種がそのイベントのものでないときも注文を作らない。
 
 同時に購入された場合の競合（確認と注文作成の間に他の人が買う）はコアでは扱わない。拡張 E2 でトランザクションと行ロックを入れる。
 
 ## 未決定の点
 
+- 支払い待ちの保持時間と Stripe の期限: 枠を押さえるのは15分だが、Stripe Checkout Session の有効期限は最短でも30分。15分を過ぎて枠が他の人に渡ったあとに元の注文が支払われると、定員を超える。決済を作るときに扱いを決める
 - アカウント削除との衝突: スターターキットのアカウント削除機能は、注文やイベントを持つユーザーだと restrict により DB エラーになる。削除前にチェックして断る処理が必要
 - `orders.event_id` は明細から辿れるので冗長だが、主催者の注文一覧と売上（C16）を簡単にするために持つ
 - コアの範囲外のため、イベント画像（E14）とチケットの使用日時（E1）は入れていない
