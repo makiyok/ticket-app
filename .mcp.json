@@ -1,11 +1,8 @@
 {
-    "mcpServers": {
-        "laravel-boost": {
-            "command": "vendor/bin/sail",
-            "args": [
-                "artisan",
-                "boost:mcp"
-            ]
-        }
+  "mcpServers": {
+    "startup-mentor": {
+      "type": "http",
+      "url": "https://startup-mentor.spqrjp.workers.dev/mcp"
     }
+  }
 }
